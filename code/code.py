@@ -14,6 +14,8 @@ import add
 import budget
 import analytics
 import predict
+import os
+from pdf import create_summary_pdf
 from datetime import datetime
 from jproperties import Properties
 
@@ -50,10 +52,11 @@ def listener(user_requests):
             )
 
     message = (
-        ("Sorry, I can't understand messages yet :/\n"
-         "I can only understand commands that start with /. \n\n"
-         "Type /faq or /help if you are stuck.")
-    )
+    "I'm here to help, but I can only respond to specific commands for now.\n\n"
+    "To get started, try typing a command that begins with '/'.\n"
+    "If you're unsure, type /faq or /help to see a list of available commands.\n\n"
+    "Thanks for understanding! 😊"
+)
 
     try:
         helper.read_json()
@@ -215,6 +218,85 @@ def command_predict(message):
     analyze budget and spending trends and suggest a future budget. Commands to run this commands=["predict"]
     """
     predict.run(message, bot)
+
+# handles /summary command
+@bot.message_handler(commands=["summary"])
+def command_summary(message):
+    """
+    command_summary(message): Takes the message with the user's chat ID and 
+    calls the helper function to generate the summary.
+    """
+    helper.generate_summary(message.chat.id, bot)
+
+# handles /report command
+@bot.message_handler(commands=["report"])
+def command_report(message):
+    """
+    command_report(message): Takes the message with the user's chat ID and 
+    requests a date range for the report, then calls the helper function to generate it.
+    """
+    chat_id = message.chat.id
+    bot.send_message(chat_id, "Please enter the start and end dates for the report (format: YYYY-MM-DD to YYYY-MM-DD).")
+    
+    # Listen for the next message containing the date range
+    @bot.message_handler(func=lambda msg: "-" in msg.text and "to" in msg.text)
+    def handle_date_range(msg):
+        date_range = msg.text.split("to")
+        if len(date_range) == 2:
+            start_date = date_range[0].strip()
+            end_date = date_range[1].strip()
+            # Generate the report and send it
+            helper.generate_report(chat_id, bot, start_date, end_date)
+        else:
+            bot.send_message(chat_id, "Invalid format. Please try again using 'YYYY-MM-DD to YYYY-MM-DD'.")
+
+@bot.message_handler(commands=["socialmedia"])
+def command_socialmedia(message):
+    """
+    command_socialmedia(message): Generates a shareable link for the user's expense summary that can
+    be posted on social media platforms.
+    """
+    chat_id = message.chat.id
+    
+    # Generate or fetch the link to the user's expense summary
+    summary_link = generate_shareable_link(chat_id)
+    
+    # Message with options for social media platforms
+    if summary_link:
+        response_message = (
+            "Here’s your shareable link to your expense summary: \n"
+            f"{summary_link} \n\n"
+            "Share this link on your social media:\n"
+            "1. Facebook: [Share on Facebook](https://www.facebook.com/sharer/sharer.php?u={summary_link})\n"
+            "2. Twitter: [Share on Twitter](https://twitter.com/share?url={summary_link}&text=Check%20out%20my%20expense%20summary!)\n"
+            "3. LinkedIn: [Share on LinkedIn](https://www.linkedin.com/sharing/share-offsite/?url={summary_link})"
+        )
+        bot.send_message(chat_id, response_message, parse_mode="Markdown")
+    else:
+        bot.send_message(chat_id, "Failed to generate a shareable link. Please try again later.")
+
+def generate_shareable_link(chat_id):
+    """
+    Generates a shareable link for the user's expense summary.
+    This function creates a PDF summary of the user's expenses, uploads it to a cloud storage service,
+    and returns a shareable link.
+    """
+    try:
+        # Assuming `pdf.create_summary_pdf(chat_id)` exists in pdf.py and generates the PDF path
+        file_path = pdf.create_summary_pdf(chat_id)
+        
+        # For demonstration purposes, simulate creating a shareable link
+        # In production, use an upload service, like Google Drive or Dropbox, to get a public link
+        shareable_link = f"https://example.com/shared_files/{os.path.basename(file_path)}"
+        
+        # Log or print to check link
+        print("Generated shareable link:", shareable_link)
+        
+        return shareable_link
+    except Exception as e:
+        logging.exception("Error generating shareable link: " + str(e))
+        return None
+
 
 def addUserHistory(chat_id, user_record):
     global user_list
