@@ -68,7 +68,7 @@ def run(message, bot):
             category_spend_percent = {}
             for cat in helper.spend_categories:
                 if helper.isCategoryBudgetByCategoryAvailable(chat_id, cat):
-                    percent = helper.calculateRemainingCateogryBudgetPercent(chat_id, cat)
+                    percent = helper.calculateRemainingCategoryBudgetPercent(chat_id, cat)
                     category_spend_percent[cat] = percent
             graphing.remaining(category_spend_percent)
 
@@ -94,3 +94,41 @@ def run(message, bot):
     except Exception as e:
         logging.exception(str(e))
         bot.reply_to(message, "Oops!" + str(e))
+
+# Add this function to your pdf.py file
+
+def create_summary_pdf(chat_id):
+    """
+    Creates a summary PDF of the user's expenses and returns the file path.
+    """
+    try:
+        # Placeholder: Path where the PDF will be saved
+        file_path = f"{chat_id}_expenses_summary.pdf"
+        
+        # Create a PDF object
+        pdf = FPDF()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        pdf.add_page()
+
+        pdf.set_font("Arial", size=12)
+        pdf.cell(200, 10, txt="Expenses Summary", ln=True, align='C')
+
+        # Fetch user data to populate the PDF
+        user_history = helper.getUserHistory(chat_id)
+        total_expense = 0
+        for rec in user_history:
+            date, category, amount = rec.split(",")
+            amount = float(amount)  # Ensure amount is treated as a float
+            total_expense += amount
+            pdf.cell(200, 10, txt=f"Date: {date}, Category: {category}, Amount: ${amount:.2f}", ln=True)
+
+        # Add total expense to the PDF
+        pdf.cell(200, 10, txt=f"Total Expense: ${total_expense:.2f}", ln=True)
+
+        # Save the PDF to the specified file path
+        pdf.output(file_path)
+
+        return file_path
+    except Exception as e:
+        logging.error("Error while creating PDF: " + str(e))
+        return None
