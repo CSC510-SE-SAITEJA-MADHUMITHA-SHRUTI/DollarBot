@@ -29,8 +29,16 @@ import re
 import json
 import os
 from datetime import datetime
+from notify import notify
 
-spend_categories = []
+spend_categories = [
+    "Food",
+    "Groceries",
+    "Utilities",
+    "Transport",
+    "Shopping",
+    "Miscellaneous",
+]
 choices = ["Date", "Category", "Cost"]
 spend_display_option = ["Day", "Month"]
 spend_estimate_option = ["Next day", "Next month"]
@@ -74,6 +82,9 @@ commands = {
     "weekly": "This option is to get the weekly analysis report of the expenditure",
     "monthly": "This option is to get the monthly analysis report of the expenditure",
     "sendEmail": "Send an email with an attachment showing your history",
+    "summary": "Generates a summary of your overall and category-wise budgets, showing remaining and spent amounts.",
+    "report": "Generates a comprehensive report over a custom date range, with individual transactions and totals by category. Ideal for detailed monthly or quarterly reviews.",
+    "socialmedia": "Generate a shareable link to post your expense summary on social media platforms."
 }
 
 dateFormat = "%d-%b-%Y"
@@ -109,6 +120,156 @@ def write_json(user_list):
             json.dump(user_list, json_file, ensure_ascii=False, indent=4)
     except FileNotFoundError:
         print("Sorry, the data file could not be found.")
+
+# Summary command
+def generate_summary(chat_id, bot):
+    """
+    generate_summary(chat_id, bot): Generates a summary of the user's overall and category-wise budget.
+    """
+    overall_budget = getOverallBudget(chat_id)
+    category_budget = getCategoryBudget(chat_id)
+    total_spent = calculate_total_spendings(getUserHistory(chat_id))
+    
+    summary_message = "===== Budget Summary =====\n\n"
+    
+    if overall_budget is not None:
+        remaining_overall = calculateRemainingOverallBudget(chat_id)
+        summary_message += f"Overall Budget: ${overall_budget}\n"
+        summary_message += f"Total Spent: ${total_spent}\n"
+        summary_message += f"Remaining Overall Budget: ${remaining_overall}\n\n"
+    else:
+        summary_message += "No overall budget set.\n\n"
+    
+    summary_message += "Category-Wise Budget:\n"
+    if category_budget:
+        for category, budget in category_budget.items():
+            spent = calculate_total_spendings_for_category(getUserHistory(chat_id), category)
+            remaining = float(budget) - spent
+            summary_message += f"{category}:\n  Budget: ${budget}\n  Spent: ${spent}\n  Remaining: ${remaining}\n"
+    else:
+        summary_message += "No category-wise budget set."
+    
+    bot.send_message(chat_id, summary_message)
+
+def generate_report(chat_id, bot, start_date, end_date):
+    """
+    generate_report(chat_id, bot, start_date, end_date): Generates a detailed spending report
+    for the specified date range and sends it to the user.
+    """
+    try:
+        # Convert dates from string to datetime for comparison
+        start = datetime.strptime(start_date, "%Y-%m-%d")
+        end = datetime.strptime(end_date, "%Y-%m-%d")
+
+        if start > end:
+            bot.send_message(chat_id, "Start date must be before end date. Please try again.")
+            return
+
+        # Fetch expenses for the specified date range
+        expenses = fetch_expenses(chat_id, start, end)
+        if expenses is None or not expenses:
+            bot.send_message(chat_id, f"No expenses found between {start_date} and {end_date}.")
+            return
+
+        # Generate the report content
+        report_content = f"📅 Report from {start_date} to {end_date} 📅\n\n"
+        total_spent = 0
+        for expense in expenses:
+            report_content += f"{expense['date'].strftime('%d-%b-%Y')}: {expense['category']} - ${expense['amount']}\n"
+            total_spent += expense['amount']  # Sum the amounts
+
+        report_content += f"\nTotal Spent: ${total_spent:.2f}"
+        bot.send_message(chat_id, report_content)
+
+    except ValueError:
+        bot.send_message(chat_id, "Invalid date format. Please use YYYY-MM-DD.")
+    except Exception as e:
+        bot.send_message(chat_id, "An error occurred while generating the report.")
+        print(f"Error: {e}")  # Print the exception for debugging
+
+def generate_shareable_link(chat_id):
+    """
+    Generates a shareable link for the user's expense summary.
+    This function assumes that an external service API (e.g., Google Drive API) is used to upload
+    the summary and obtain a link that can be publicly shared.
+    """
+    try:
+        # Generate the PDF summary
+        file_path = pdf.create_summary_pdf(chat_id)
+        
+        # Upload the file to a service like Google Drive or Dropbox (assuming helper.upload_to_drive exists)
+        shareable_link = helper.upload_to_drive(file_path)
+        
+        return shareable_link
+    except Exception as e:
+        logging.exception("Error generating shareable link: " + str(e))
+        return None
+
+def create_shareable_link(chat_id):
+    """
+    Creates a shareable link for the user's expenses.
+    This could be replaced with actual upload logic.
+    """
+    try:
+        # Placeholder for the file path, you can replace this with actual file generation logic
+        file_name = f"{chat_id}_expenses_summary.pdf"
+        
+        # Simulated link creation
+        shareable_link = f"https://example.com/shared_files/{file_name}"
+        
+        # Log or print to check link
+        print("Generated shareable link:", shareable_link)
+        
+        return shareable_link
+    except Exception as e:
+        logging.exception("Error generating shareable link: " + str(e))
+        return None 
+
+def fetch_expenses(chat_id, start_date, end_date):
+    """
+    Fetch expenses for a user between specified start and end dates.
+    
+    Args:
+        chat_id (str): The unique identifier for the user.
+        start_date (datetime): The start date for fetching expenses.
+        end_date (datetime): The end date for fetching expenses.
+    
+    Returns:
+        list: A list of expenses within the specified date range.
+    """
+    user_data = getUserData(chat_id)  # Assuming this retrieves user data
+    
+    if not user_data or "data" not in user_data:
+        print("No user data found.")
+        return []  # Return an empty list if no data found
+
+    expenses = user_data["data"]
+
+    # Ensure expenses is a list
+    if not isinstance(expenses, list):
+        print("Expected expenses to be a list, but got:", type(expenses))
+        return []
+
+    filtered_expenses = []
+    
+    for expense_str in expenses:
+        try:
+            date_str, category, amount_str = expense_str.split(',')
+            expense_date = datetime.strptime(date_str, "%d-%b-%Y")  # Adjust date format as needed
+            amount = float(amount_str)
+
+            # Check if the expense falls within the specified date range
+            if start_date <= expense_date <= end_date:
+                filtered_expenses.append({
+                    'date': expense_date,
+                    'category': category,
+                    'amount': amount
+                })
+        except ValueError as e:
+            print(f"Error parsing expense: {expense_str} -> {e}")
+            continue
+
+    return filtered_expenses                   
 
 def read_category_json():
     """
@@ -267,28 +428,78 @@ def get_uncategorized_amount(chatId, amount):
     uncategorized_budget = overall_budget - category_budget
     return str(round(uncategorized_budget,2))
 
-def display_remaining_budget(message, bot):
+def display_remaining_budget(message, bot, cat):
+    """
+    Display the remaining budget for both the overall budget and a specific category.
+    """
+    chat_id = message.chat.id
+    display_remaining_category_budget(message, bot, cat)
     display_remaining_overall_budget(message, bot)
 
 def display_remaining_overall_budget(message, bot):
+    print("here")
     chat_id = message.chat.id
     remaining_budget = calculateRemainingOverallBudget(chat_id)
-    if remaining_budget >= 0:
+    print("here", remaining_budget)
+
+    # Check if remaining_budget is None
+    if remaining_budget is None:
+        msg = "Error: Unable to calculate remaining budget."
+    elif remaining_budget >= 0:
         msg = "\nRemaining Overall Budget is $" + str(remaining_budget)
     else:
         msg = (
-            "\nBudget Exceded!\nExpenditure exceeds the budget by $" + str(remaining_budget)[1:]
+            "\nBudget Exceeded!\nExpenditure exceeds the budget by $" + str(remaining_budget)[1:]
         )
+    
     bot.send_message(chat_id, msg)
 
 def calculateRemainingOverallBudget(chat_id):
     budget = getOverallBudget(chat_id)
+    
+    # Check if budget is valid
+    if budget is None:
+        print("Error: Overall budget not found.")
+        return None  # Or handle this case appropriately
+
     history = getUserHistory(chat_id)
+
+    # If history is empty or None, handle it
+    if not history:
+        print("Error: User history not found.")
+        return float(budget)  # No spendings means remaining budget is the full amount
+
     query = datetime.now().today().strftime(getMonthFormat())
+
+    # Filters history for entries that match the current month
     queryResult = [value for _, value in enumerate(history) if str(query) in value]
-    if budget == None:
-        return -calculate_total_spendings(queryResult)
-    return float(budget) - calculate_total_spendings(queryResult)
+
+    total_spendings = calculate_total_spendings(queryResult)
+
+    # Handle case where total_spendings might be None
+    if total_spendings is None:
+        print("Error: Total spendings could not be calculated.")
+        total_spendings = 0  # Assuming no spendings if calculation fails
+
+    # Calculate and return the remaining budget
+    return float(budget) - total_spendings
+
+
+def display_remaining_category_budget(message, bot, cat):
+    """
+    Display the remaining budget for a specific category.
+    """
+    chat_id = message.chat.id
+    remaining_budget = calculateRemainingCategoryBudget(chat_id, cat)
+    
+    if remaining_budget >= 0:
+        msg = f"\nRemaining budget for {cat} category is ${remaining_budget:.2f}"
+    else:
+        msg = (
+            f"\nBudget Exceeded for {cat} category!\nExpenditure exceeds the budget by ${abs(remaining_budget):.2f}"
+        )
+    
+    bot.send_message(chat_id, msg)
 
 def calculate_total_spendings(queryResult):
     total = 0
@@ -298,12 +509,14 @@ def calculate_total_spendings(queryResult):
     return total
 
 
-def calculateRemainingCategoryBudget(chat_id, cat):
+def calculateRemainingCategoryBudgetPercent(chat_id, cat):
     budget = getCategoryBudgetByCategory(chat_id, cat)
+    if not budget or float(budget) == 0:  # Check if budget is None or zero
+        return 0  # Return 0 percent if budget is zero to avoid division error
     history = getUserHistory(chat_id)
     query = datetime.now().today().strftime(getMonthFormat())
     queryResult = [value for _, value in enumerate(history) if str(query) in value]
-    return float(budget) - calculate_total_spendings_for_category(queryResult, cat)
+    return (calculate_total_spendings_for_category(queryResult, cat) / float(budget)) * 100
 
 def calculateRemainingCategoryBudgetPercent(chat_id, cat):
     budget = getCategoryBudgetByCategory(chat_id, cat)
@@ -402,6 +615,40 @@ def addSpendCategories(category):
     result = ','.join(spend_cat)
     category_list["categories"] = result
     write_category_json(category_list)
+
+# Original function `display_remaining_budget` and `display_remaining_category_budget` references:
+def display_remaining_budget(message, bot, cat):
+    display_remaining_category_budget(message, bot, cat)
+
+def display_remaining_category_budget(message, bot, cat):
+    # Assuming `chat_id` is retrieved or passed in context to this function
+    chat_id = message.chat.id  # Adjust if `chat_id` comes from a different source in your code
+    remaining_budget = calculateRemainingCategoryBudget(chat_id, cat)
+    # Display remaining budget to user
+    bot.send_message(chat_id, f"Remaining budget for {cat}: {remaining_budget}")
+
+# Placeholder for `calculateRemainingCategoryBudget`
+def calculateRemainingCategoryBudget(chat_id, category):
+    """
+    Placeholder function for calculating remaining budget for a specific category.
+    Replace with actual logic to retrieve and calculate the budget from your data source.
+    """
+    # For example, if budgets are stored in a dictionary, you'd fetch and calculate the remaining amount
+    # Mocked example: returning a fixed value for now
+    budgets = {
+        "Food": 100.0,
+        "Transport": 50.0,
+        "Entertainment": 75.0,
+        # Add more categories as needed
+    }
+    remaining_budget = budgets.get(category, 0.0)  # Return 0.0 if category is not found
+    return remaining_budget
+
+def getSpendCategories():
+    """
+    getSpendCategories(): This functions returns the spend categories used in the bot. These are defined the same file.
+    """
+    return spend_categories    
 
 def getSpendDisplayOptions():
     """

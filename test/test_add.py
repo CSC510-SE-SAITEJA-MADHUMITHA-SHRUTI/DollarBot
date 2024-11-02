@@ -170,3 +170,22 @@ def test_read_json():
 
     except FileNotFoundError:
         print("---------NO RECORDS FOUND---------")
+
+@patch("telebot.telebot")
+def test_post_category_selection_invalidDate(mock_telebot, mocker):
+    mc = mock_telebot.return_value
+    mc.send_message.return_value = True
+    mc.reply_to.return_value = True  # Assume bot replies to invalid inputs
+
+    # Mocking helper functions
+    mocker.patch.object(add, "helper")
+    add.helper.getSpendCategories.return_value = ["Food", "Utilities"]
+
+    # Setting a future date (invalid date input scenario)
+    future_date = datetime.today().date().replace(year=datetime.today().year + 1)
+
+    message = create_message("Testing invalid date input!")
+    add.post_category_selection(message, mc, future_date)
+    assert mc.reply_to.called  # The bot should reply due to invalid date
+
+    

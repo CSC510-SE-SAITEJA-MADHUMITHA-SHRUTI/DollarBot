@@ -74,6 +74,11 @@ def display_total(message, bot):
         chat_id = message.chat.id
         DayWeekMonth = message.text
 
+        # Filter out non-spending-related commands such as "/help"
+        if DayWeekMonth.startswith("/"):
+            bot.reply_to(message, "This command is not related to spendings.")
+            return
+
         if DayWeekMonth not in helper.getSpendDisplayOptions():
             raise DisplayOptionError(
                'Sorry I can\'t show spendings for "{}"!'.format(DayWeekMonth)
@@ -124,6 +129,7 @@ def display_total(message, bot):
     except Exception as e:
         logging.exception(str(e))
         bot.reply_to(message, str(e))
+
 
 def calculate_spendings(queryResult):
     """

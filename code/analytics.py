@@ -46,30 +46,51 @@ def run(message, bot):
         markup.add(c)
     msg = bot.reply_to(message, "Select the type of analysis (grouped by category):", reply_markup=markup)
     bot.register_next_step_handler(msg, post_operation_selection, bot)
-
+    
 def post_operation_selection(message, bot):
     """
-    post_operation_selection(message, bot): It takes 2 arguments for processing - message which
-    is the message from the user, and bot which is the telegram bot object from the
-    run(message, bot): function in the analytics.py file. Depending on the action chosen by the user,
-    it passes on control to the corresponding functions which are all located in different files.
+    post_operation_selection(message, bot): Processes user-selected operations and 
+    invokes corresponding analysis functions.
+    
+    Args:
+        message: The message object containing user input.
+        bot: The Telegram bot object for sending messages.
     """
+    chat_id = message.chat.id
+    op = message.text
+    options = helper.getAnalyticsOptions()
+
     try:
-        chat_id = message.chat.id
-        op = message.text
-        options = helper.getAnalyticsOptions()
-        if op not in options.values():
-            bot.send_message(
-                chat_id, "Invalid", reply_markup=types.ReplyKeyboardRemove()
-            )
-            raise InvalidOperationError(op)
-        if op == options["overall"]:
-            get_analysis.viewOverallBudget(chat_id, bot)
-        elif op == options["spend"]:
-            get_analysis.viewSpendWise(chat_id, bot)
-        elif op == options["remaining"]:
-            get_analysis.viewRemaining(chat_id, bot)
-        elif op == options["history"]:
-            get_analysis.viewHistory(chat_id, bot)
+        # Validate the operation
+        validate_operation(op, options)
+
+        # Mapping operations to functions
+        operation_mapping = {
+            options["overall"]: get_analysis.viewOverallBudget,
+            options["spend"]: get_analysis.viewSpendWise,
+            options["remaining"]: get_analysis.viewRemaining,
+            options["history"]: get_analysis.viewHistory,
+        }
+
+        # Execute the corresponding function
+        operation_mapping[op](chat_id, bot)
+
+    except InvalidOperationError as e:
+        bot.send_message(chat_id, f"Invalid operation selected: '{e.operation}'. Please choose a valid option.")
     except Exception as e:
         helper.throw_exception(e, message, bot, logging)
+
+
+def validate_operation(op, options):
+    """
+    Validates whether the provided operation is in the available options.
+    
+    Args:
+        op: The operation to validate.
+        options: A dictionary of valid operations.
+    
+    Raises:
+        InvalidOperationError: If the operation is not valid.
+    """
+    if op not in options.values():
+        raise InvalidOperationError(op)

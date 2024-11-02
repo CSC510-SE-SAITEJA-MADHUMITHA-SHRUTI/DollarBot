@@ -1,30 +1,3 @@
-"""
-File: budget_view.py
-Author: Vyshnavi Adusumelli, Tejaswini Panati, Harshavardhan Bandaru
-Date: October 01, 2023
-Description: File contains Telegram bot message handlers and their associated functions.
-
-Copyright (c) 2023
-
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-
-THE SOFTWARE IS PROVIDED "AS IS," WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
-"""
-
 import graphing
 import helper
 import logging
@@ -35,54 +8,72 @@ from exception import BudgetNotFoundError
 
 def run(message, bot):
     """
-    run(message, bot): This is the main function used to implement the budget feature.
-    It takes 2 arguments for processing - message which is the message from the user, and bot which
-    is the telegram bot object from the main code.py function. Depending on whether the user has configured
-    an overall budget or a category-wise budget, this functions checks for either case using the helper
-    module's isOverallBudgetAvailable and isCategoryBudgetAvailable functions and passes control on the
-    respective functions(listed below). If there is no budget configured an exception is raised and the user
-    is given a message indicating that there is no budget configured.
+    Main function for displaying the budget to the user, handling both overall and category-specific budgets.
+    
+    Parameters:
+    - message: The message from the user in Telegram.
+    - bot: The Telegram bot object handling communication.
+    
+    If a budget is configured (either overall or category-specific), displays the budget information.
+    Otherwise, raises a BudgetNotFoundError and informs the user about setting up a budget.
     """
     try:
-        print("here")
         chat_id = message.chat.id
         if helper.isOverallBudgetAvailable(chat_id) or helper.isCategoryBudgetAvailable(chat_id):
-            display_overall_budget(message, bot)
-            display_category_budget(message, bot)
+            bot.send_message(chat_id, "Retrieving your budget details...")
+            if helper.isOverallBudgetAvailable(chat_id):
+                display_overall_budget(chat_id, bot)
+            if helper.isCategoryBudgetAvailable(chat_id):
+                display_category_budget(chat_id, bot)
         else:
-            raise BudgetNotFoundError(
-                "Budget does not exist. Use the /budget option to add/update the budget."
-            )
+            raise BudgetNotFoundError("No budget configured. Use the /budget command to add or update your budget.")
+    except BudgetNotFoundError as bnf_err:
+        logging.warning(f"No budget found for chat_id {chat_id}: {bnf_err}")
+        bot.send_message(chat_id, str(bnf_err))
     except Exception as e:
+        logging.error(f"Error in displaying budget for chat_id {chat_id}: {e}")
         helper.throw_exception(e, message, bot, logging)
 
-def display_overall_budget(message, bot):
+def display_overall_budget(chat_id, bot):
     """
-    display_overall_budget(message, bot): It takes 2 arguments for processing -
-    message which is the message from the user, and bot which is the telegram bot
-    object from the run(message, bot): in the same file. It gets the budget for the
-    user based on their chat ID using the helper module and returns the same through the bot to the Telegram UI.
+    Retrieves and displays the overall budget for the user based on their chat ID.
+    
+    Parameters:
+    - chat_id: Unique ID of the user's chat.
+    - bot: The Telegram bot object handling communication.
     """
-    chat_id = message.chat.id
-    data = helper.getOverallBudget(chat_id)
-    bot.send_message(chat_id, "Overall Budget: $" + data)
+    try:
+        data = helper.getOverallBudget(chat_id)
+        bot.send_message(chat_id, f"💰 Overall Budget: ${data}")
+    except Exception as e:
+        logging.error(f"Error in retrieving overall budget for chat_id {chat_id}: {e}")
+        bot.send_message(chat_id, "Sorry, we encountered an error retrieving your overall budget.")
 
-def display_category_budget(message, bot):
+def display_category_budget(chat_id, bot):
     """
-    display_category_budget(message, bot): It takes 2 arguments for processing -
-    message which is the message from the user, and bot which is the telegram bot object
-    from the run(message, bot): in the same file. It gets the category-wise budget for the
-    user based on their chat ID using the helper module.It then processes it into a string
-    format suitable for display, and returns the same through the bot to the Telegram UI.
+    Retrieves and displays the category-specific budget for the user based on their chat ID.
+    Generates a graph if available and sends it to the user.
+    
+    Parameters:
+    - chat_id: Unique ID of the user's chat.
+    - bot: The Telegram bot object handling communication.
     """
-    chat_id = message.chat.id
-    if helper.isCategoryBudgetAvailable(chat_id):
+    try:
         data = helper.getCategoryBudget(chat_id)
-        print(data,"data")
-        if graphing.viewBudget(data):
-            bot.send_photo(chat_id, photo=open("budget.png", "rb"))
-            os.remove("budget.png")
+        if data:
+            bot.send_message(chat_id, "📊 Here’s your category-wise budget:")
+            table_text = "\n".join([f"- {category}: ${amount}" for category, amount in data.items()])
+            bot.send_message(chat_id, table_text)
+
+            # Generate graph and send if successful
+            if graphing.viewBudget(data):
+                with open("budget.png", "rb") as photo:
+                    bot.send_photo(chat_id, photo)
+                os.remove("budget.png")
+            else:
+                bot.send_message(chat_id, "Unable to generate a visual representation of your budget.")
         else:
-            bot.send_message(chat_id, "You are yet to set your budget for different categories.")
-    else:
-        bot.send_message(chat_id, "You are yet to set your budget for different categories.")
+            bot.send_message(chat_id, "It looks like your category budgets haven't been set up yet.")
+    except Exception as e:
+        logging.error(f"Error in retrieving category budget for chat_id {chat_id}: {e}")
+        bot.send_message(chat_id, "Sorry, we encountered an error retrieving your category budgets.")

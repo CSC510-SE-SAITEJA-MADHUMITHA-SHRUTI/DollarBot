@@ -24,7 +24,18 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
+
 import os
 import sys
+from your_telegram_bot_module import bot  # Replace with your actual bot import
 
-sys.path.insert(0, os.getcwd() + "/code")
+def main():
+    try:
+        bot.polling(non_stop=True)
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+if __name__ == "__main__":
+    # Optionally, you could manage your project structure here
+    sys.path.insert(0, os.path.join(os.getcwd(), "code"))
+    main()

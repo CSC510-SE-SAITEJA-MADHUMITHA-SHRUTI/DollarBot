@@ -24,11 +24,11 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
-
 import helper
 import logging
 from telebot import types
 from telegram_bot_calendar import DetailedTelegramCalendar, LSTEP
+from helper import display_remaining_budget
 from datetime import datetime
 from exception import InvalidAmountError, InvalidCategoryError
 
@@ -165,7 +165,8 @@ def post_amount_input(message, bot, selected_category, date):
                 amount_str, category_str, date_str
             ),
         )
-        helper.display_remaining_budget(message, bot)
+        helper.display_remaining_budget(message, bot, selected_category)  # Use 'selected_category' instead of 'cat'
+
     except Exception as e:
         logging.exception(str(e))
         bot.send_message(chat_id, "Oh no. " + str(e))
@@ -188,4 +189,3 @@ def add_user_record(chat_id, record_to_be_added):
 
     user_list[str(chat_id)]["data"].append(record_to_be_added)
     return user_list
-
